@@ -3,6 +3,7 @@
 #define pinD 7
 
 #define pinPilot A0
+#define pinRelay1 A1
 #define pinButton 8
 
 #define stateA 0
@@ -11,6 +12,9 @@
 #define stateD 3
 
 #define samplesAverage 20
+#define msgLen 6
+
+#define debug 0
 
 uint8_t state = stateA;
 
@@ -23,7 +27,7 @@ volatile uint8_t rised = 0;
 
 volatile unsigned long freq = 0;
 volatile unsigned long timeUp = 0;
-volatile unsigned long timeDown = 0;
+volatile unsigned long totalTime = 0;
 
 void initArrays(){
   for(i = 0; i < samplesAverage; i++){
@@ -46,26 +50,17 @@ ISR (PCINT1_vect) {
   if(pinState == HIGH){
     // Rising edge
     freq = 1000000 * samplesAverage / (eventTime - risingEdges[i]);
+    totalTime = eventTime - risingEdges[(i + 1) % samplesAverage];
     if(!rised){
       rised = 1;
     }
-    //timeDown += (eventTime - fallingEdges[(i - 1) % samplesAverage]);
-    //timeUp -= (fallingEdges[i] - risingEdges[i]);
-    //timeDown -= (fallingEdges[i] - risingEdges[i]);
-    //timeUp -= (risingEdges[i] - fallingEdges[(i - 1) % samplesAverage]); 
     risingEdges[i] = eventTime;
   } else {
     if(rised){
-      //timeUp += (eventTime - risingEdges[i]);
-      //timeDown -= (risingEdges[(i + 1) & samplesAverage] - fallingEdges[i]);
-      //timeUp -= (risingEdges[(i + 1) % samplesAverage] - fallingEdges[i]);
-      //timeDown -= (fallingEdges[(i + 1) % samplesAverage] - risingEdges[(i + 1) % samplesAverage]);
       // Update time up and down here
       timeUp += (eventTime - risingEdges[i]);
-      timeDown += (risingEdges[i] - fallingEdges[(i - 1) % samplesAverage]);
       if(inited){
         timeUp -= (fallingEdges[(i + 1) % samplesAverage] - risingEdges[(i + 1) % samplesAverage]);
-        timeDown -= (risingEdges[(i + 1) % samplesAverage] - fallingEdges[i]); 
       } else if(i == (samplesAverage - 1)){
         inited = 1;
       }
@@ -85,6 +80,7 @@ void setup() {
   pinMode(pinD, OUTPUT);
   pinMode(pinPilot, INPUT);
   pinMode(pinButton, INPUT);
+  pinMode(pinRelay1, INPUT);
   digitalWrite(pinB, LOW);
   digitalWrite(pinC, LOW);
   digitalWrite(pinD, LOW);
@@ -121,9 +117,53 @@ uint8_t lastButtonState = LOW;
 uint8_t buttonState = LOW;
 unsigned long buttonPressTime = 0;
 unsigned long lastFreq = 0;
-unsigned long freqLastSent = 0;
+#ifdef debug
+  unsigned long freqLastSent = 0;
+#endif
+unsigned long stateLastSent = 0;
 unsigned long lastTimeUp = 0;
 unsigned long lastTimeDown = 0;
+unsigned long lastTotalTime = 0;
+
+uint8_t incomingByte[msgLen];
+uint8_t bufIdx = 0;
+bool received = false;
+
+uint8_t relayState = 0;
+
+void process_incoming_data(){
+  if(received){
+    switch(incomingByte[0]){
+      case 'S':
+        switch(incomingByte[1]){
+          case 'S':   // Set State (SS)
+            switch(incomingByte[3]){
+              case 'A':
+                state = stateA;
+                break;
+              case 'B':
+                state = stateB;
+                break;
+              case 'C':
+                state = stateC;
+                break;
+              case 'D':
+                state = stateD;
+                break;
+            }
+            #if debug
+              Serial.print("Setting state to: ");
+              Serial.println(state);
+            #endif
+            process_state(state);
+            break;
+        }
+        break;
+    }
+    received = false;
+    bufIdx = 0;
+  }
+}
 
 void loop() { 
   buttonState = digitalRead(pinButton);
@@ -133,36 +173,78 @@ void loop() {
     if(state > stateD){
       state = stateA;
     }
-    Serial.println('Changing state to: ');
+    Serial.println("Changing state to: ");
     Serial.println(state);
     process_state(state);
   }
   lastButtonState = buttonState;
+
+  relayState = digitalRead(pinRelay1);
   
   cli();
   lastFreq = freq;
   lastTimeUp = timeUp;
-  lastTimeDown = timeDown;
+  lastTotalTime = totalTime;
   sei();
+  if((millis() - stateLastSent) > 200){
+    Serial.print("{\"relay\": ");
+    Serial.print(relayState);
+    Serial.print(", \"freq\": ");
+    Serial.print(lastFreq);
+    Serial.print(", \"PWM\": ");
+    Serial.print(lastTimeUp * 10000 / lastTotalTime);
+    Serial.print(", \"state\": ");
+    Serial.print(state);
+    Serial.print(", \"time\": ");
+    Serial.print(millis());
+    Serial.println("}");
+    stateLastSent = millis();
+  }
   if((millis() - lastChange) > 100 && freq > 0){
     cli();
     freq = 0;
     inited = 0;
     i = 0;
     timeUp = 0;
-    timeDown = 0;
     rised = 0;
     initArrays();
     sei();
   }
 
-  if((millis() - freqLastSent) > 3000){
-    Serial.println(lastFreq);
-    Serial.println(lastTimeUp * 10000 / (lastTimeUp + lastTimeDown));
-    Serial.println(lastTimeUp);
-    Serial.println(lastTimeDown);
-    Serial.println(inited);
-    Serial.println();
-    freqLastSent = millis();
+  #if debug
+    if((millis() - freqLastSent) > 3000){
+      Serial.print("Relay state: ");
+      Serial.println(relayState);
+      Serial.print("Freq: ");
+      Serial.println(lastFreq);
+      Serial.print("PWM duty cycle: ");
+      Serial.println(lastTimeUp * 10000 / lastTotalTime);
+      Serial.print("Time up: ");
+      Serial.println(lastTimeUp);
+      Serial.print("Total time: ");
+      Serial.println(lastTotalTime);
+      Serial.println();
+      freqLastSent = millis();
+    }
+  #endif
+  
+
+  process_incoming_data();
+    
+  while (Serial.available() > 0) {
+    // read the incoming byte:
+    incomingByte[bufIdx++] = Serial.read();
+    if(incomingByte[bufIdx-1] == '\n'){
+      received = true;
+      #if debug
+        Serial.println("Receive finished");
+      #endif
+    }
+    #if debug
+      Serial.print("Received byte: ");
+      Serial.println(incomingByte[bufIdx - 1]);
+      Serial.print("At idx: ");
+      Serial.println(bufIdx);
+    #endif
   }
 }
