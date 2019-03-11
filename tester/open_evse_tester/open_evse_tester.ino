@@ -27,6 +27,7 @@ volatile uint8_t rised = 0;
 
 volatile unsigned long freq = 0;
 volatile unsigned long timeUp = 0;
+volatile unsigned long timeDown = 0;
 volatile unsigned long totalTime = 0;
 
 void initArrays(){
@@ -44,13 +45,14 @@ void pciSetup(byte pin)
 }
 
 ISR (PCINT1_vect) {
-  lastChange = millis();                      // Not interrupt safe, non critical though
   unsigned long eventTime = micros();
+  lastChange = millis();                      // Not interrupt safe, non critical though
   uint8_t pinState = digitalRead(pinPilot);   // Could be done faster if required
   if(pinState == HIGH){
     // Rising edge
     freq = 1000000 * samplesAverage / (eventTime - risingEdges[i]);
-    totalTime = eventTime - risingEdges[(i + 1) % samplesAverage];
+    totalTime = eventTime - risingEdges[i];//(i + 1) % samplesAverage];
+    //timeDown = eventTime - fallingEdges[(i - 1) % samplesAverage];
     if(!rised){
       rised = 1;
     }
@@ -117,7 +119,7 @@ uint8_t lastButtonState = LOW;
 uint8_t buttonState = LOW;
 unsigned long buttonPressTime = 0;
 unsigned long lastFreq = 0;
-#ifdef debug
+#if debug
   unsigned long freqLastSent = 0;
 #endif
 unsigned long stateLastSent = 0;
@@ -184,6 +186,7 @@ void loop() {
   cli();
   lastFreq = freq;
   lastTimeUp = timeUp;
+  lastTimeDown = timeDown;
   lastTotalTime = totalTime;
   sei();
   if((millis() - stateLastSent) > 200){
@@ -192,7 +195,15 @@ void loop() {
     Serial.print(", \"freq\": ");
     Serial.print(lastFreq);
     Serial.print(", \"PWM\": ");
-    Serial.print(lastTimeUp * 10000 / lastTotalTime);
+    Serial.print(lastTimeUp * 10000 / (lastTotalTime));
+    #if debug
+      Serial.print(", \"lastTimeUp\": ");
+      Serial.print(lastTimeUp);
+      Serial.print(", \"lastTimeDown\": ");
+      Serial.print(lastTimeDown);
+      Serial.print(", \"totalTime\": ");
+      Serial.print(lastTotalTime);
+    #endif
     Serial.print(", \"state\": ");
     Serial.print(state);
     Serial.print(", \"time\": ");

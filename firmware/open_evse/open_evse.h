@@ -196,7 +196,7 @@ extern AutoCurrentCapacityController g_ACCController;
 #endif //AMMETER
 
 //Adafruit RGBLCD (MCP23017) - can have RGB or monochrome backlight
-#define RGBLCD
+//#define RGBLCD
 
 //select default LCD backlight mode. can be overridden w/CLI/RAPI
 #define BKL_TYPE_MONO 0
@@ -211,10 +211,10 @@ extern AutoCurrentCapacityController g_ACCController;
 // https://bitbucket.org/fmalpartida/new-liquidcrystal/downloads
 // *requires* I2CLCD enabled and RGBLCD disabled
 //#define I2CLCD_PCF8574
-#ifdef I2CLCD_PCF8574
-#define I2CLCD
-#undef RGBLCD
-#endif // I2CLCD_PCF8574
+//#ifdef I2CLCD_PCF8574
+//#define I2CLCD
+//#undef RGBLCD
+//#endif // I2CLCD_PCF8574
 
 // Advanced Powersupply... Ground check, stuck relay, L1/L2 detection.
 #define ADVPWR
@@ -228,22 +228,22 @@ extern AutoCurrentCapacityController g_ACCController;
 // How to use 1-button menu
 // Long press activates menu
 // When within menus, short press cycles menu items, long press selects and exits current submenu
-#define BTN_MENU
+//#define BTN_MENU
 
 // When not in menus, short press instantly stops the EVSE - another short press resumes.  Long press activates menus
 // also allows menus to be manipulated even when in State B/C
-#define BTN_ENABLE_TOGGLE
+//#define BTN_ENABLE_TOGGLE
 
-#ifdef BTN_MENU
+//#ifdef BTN_MENU
 // use Adafruit RGB LCD select button
-#ifdef RGBLCD
-#define ADAFRUIT_BTN
-#endif // RGBLCD
-#endif // BTN_MENU
+//#ifdef RGBLCD
+//#define ADAFRUIT_BTN
+//#endif // RGBLCD
+//#endif // BTN_MENU
 
 // Option for RTC and DelayTime
 // REQUIRES HARDWARE RTC: DS1307 or DS3231 connected via I2C
-#define RTC // enable RTC & timer functions
+//#define RTC // enable RTC & timer functions
 
 #ifdef RTC
 // Option for Delay Timer - GoldServe
