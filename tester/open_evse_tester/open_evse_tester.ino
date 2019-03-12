@@ -14,6 +14,8 @@
 #define samplesAverage 20
 #define msgLen 6
 
+#define sendStateInitial 1
+
 #define debug 0
 
 uint8_t state = stateA;
@@ -115,6 +117,7 @@ void process_state(uint8_t state){
   }
 }
 
+uint8_t sendState = sendStateInitial;
 uint8_t lastButtonState = LOW;
 uint8_t buttonState = LOW;
 unsigned long buttonPressTime = 0;
@@ -132,6 +135,56 @@ uint8_t bufIdx = 0;
 bool received = false;
 
 uint8_t relayState = 0;
+
+void send_state(){
+  Serial.print("{\"relay\": ");
+  Serial.print(relayState);
+  Serial.print(", \"freq\": ");
+  Serial.print(lastFreq);
+  Serial.print(", \"PWM\": ");
+  Serial.print(lastTimeUp * 10000 / (lastTotalTime));
+  #if debug
+    Serial.print(", \"lastTimeUp\": ");
+    Serial.print(lastTimeUp);
+    Serial.print(", \"lastTimeDown\": ");
+    Serial.print(lastTimeDown);
+    Serial.print(", \"totalTime\": ");
+    Serial.print(lastTotalTime);
+  #endif
+  Serial.print(", \"state\": ");
+  Serial.print(state);
+  Serial.print(", \"time\": ");
+  Serial.print(millis());
+  Serial.println("}");
+  stateLastSent = millis();
+}
+
+void send_ok(){
+  Serial.println("OK");
+}
+
+void send_nk(){
+  Serial.println("NK");
+}
+
+// Returns ms it took for relay to release when switched from charging to A or B
+void test_relay_open(uint8_t testState){
+  if(state != stateC || digitalRead(pinRelay1) != HIGH){
+    send_nk();
+    return;
+  }
+  
+  state = testState;
+  process_state(state);
+  unsigned long timeStart = millis();
+  while(digitalRead(pinRelay1) == HIGH){}
+  unsigned long delay = millis() - timeStart;
+  Serial.print("{\"type\": \"relay_release_test\", \"delay\": ");
+  Serial.print(delay);
+  Serial.print(", \"new_state\": ");
+  Serial.print(state);
+  Serial.println("}");
+}
 
 void process_incoming_data(){
   if(received){
@@ -159,8 +212,37 @@ void process_incoming_data(){
             #endif
             process_state(state);
             break;
+          case 'T':    // Send sTate
+            switch(incomingByte[3]){
+              case '1':
+                sendState = 1;
+                break;
+              case '0':
+                sendState = 0;
+                break;
+            }
         }
         break;
+      case 'G':
+        switch(incomingByte[1]){
+          case 'S':   // Get State
+            send_state();
+            break;
+        }
+        break;
+      case 'T':
+        switch(incomingByte[1]){
+          case 'R':   // Test Realy release
+            switch(incomingByte[3]){
+              case 'A':
+                test_relay_open(stateA);
+                break;
+              case 'B':
+                test_relay_open(stateB);
+                break;
+            }
+            break;
+        }
     }
     received = false;
     bufIdx = 0;
@@ -175,8 +257,10 @@ void loop() {
     if(state > stateD){
       state = stateA;
     }
-    Serial.println("Changing state to: ");
-    Serial.println(state);
+    #if debug
+      Serial.println("Changing state to: ");
+      Serial.println(state);
+    #endif
     process_state(state);
   }
   lastButtonState = buttonState;
@@ -189,27 +273,8 @@ void loop() {
   lastTimeDown = timeDown;
   lastTotalTime = totalTime;
   sei();
-  if((millis() - stateLastSent) > 200){
-    Serial.print("{\"relay\": ");
-    Serial.print(relayState);
-    Serial.print(", \"freq\": ");
-    Serial.print(lastFreq);
-    Serial.print(", \"PWM\": ");
-    Serial.print(lastTimeUp * 10000 / (lastTotalTime));
-    #if debug
-      Serial.print(", \"lastTimeUp\": ");
-      Serial.print(lastTimeUp);
-      Serial.print(", \"lastTimeDown\": ");
-      Serial.print(lastTimeDown);
-      Serial.print(", \"totalTime\": ");
-      Serial.print(lastTotalTime);
-    #endif
-    Serial.print(", \"state\": ");
-    Serial.print(state);
-    Serial.print(", \"time\": ");
-    Serial.print(millis());
-    Serial.println("}");
-    stateLastSent = millis();
+  if(sendState && (millis() - stateLastSent) > 200){
+    send_state();
   }
   if((millis() - lastChange) > 100 && freq > 0){
     cli();
