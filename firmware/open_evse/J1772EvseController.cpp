@@ -1320,14 +1320,15 @@ if (TempChkEnabled()) {
     }
     else if (phigh  >= m_ThreshData.m_ThreshCD) {
       // 6V ready to charge
+      tmpevsestate = EVSE_STATE_C;    // Added by sok and if/else commented out
       tmppilotstate = EVSE_STATE_C;
-      if (m_Pilot.GetState() == PILOT_STATE_PWM) {
+      /*if (m_Pilot.GetState() == PILOT_STATE_PWM) {
 	tmpevsestate = EVSE_STATE_C;
       }
       else {
 	// PWM is off so we can't charge.. force to State B
 	tmpevsestate = EVSE_STATE_B;
-      }
+      }*/
     }
     else if (phigh > m_ThreshData.m_ThreshD) {
       tmppilotstate = EVSE_STATE_D;
@@ -1451,6 +1452,34 @@ if (TempChkEnabled()) {
 #endif // STATE_TRANSITION_REQ_FUNC
   }
 
+// State changes needed to be done outside following condition
+  if (m_EvseState == EVSE_STATE_A) { // EV not connected
+  if(chargingIsOn()){
+      chargingOff(); // turn off charging current
+    }
+    m_Pilot.SetState(PILOT_STATE_P12);
+  }
+  else if (m_EvseState == EVSE_STATE_B) { // connected
+    if(chargingIsOn()){ 
+      chargingOff(); // turn off charging current
+    }
+  }
+  else if (m_EvseState == EVSE_STATE_C) {
+    /*if(m_CurrentCapacity == 0){           // Current capacity check added by sok
+      m_Pilot.SetState(PILOT_STATE_P12);
+    }
+    else{
+      m_Pilot.SetPWM(m_CurrentCapacity);
+    }*/
+    if(m_CurrentCapacity == 0){
+      if(chargingIsOn() && overflow_diff(millis(), m_PWMOffTimeMS) > RELAY_FORCE_OFF_DELAY){
+        chargingOff();
+      }
+    }
+    else if(!chargingIsOn()){
+      chargingOn(); // turn on charging current
+    }
+  }
   
   // state transition
   if (forcetransition || (m_EvseState != prevevsestate)) {
@@ -1465,8 +1494,8 @@ if (TempChkEnabled()) {
 
 
     if (m_EvseState == EVSE_STATE_A) { // EV not connected
-      chargingOff(); // turn off charging current
-      m_Pilot.SetState(PILOT_STATE_P12);
+      //chargingOff(); // turn off charging current
+      //m_Pilot.SetState(PILOT_STATE_P12);
 #ifdef CHARGE_LIMIT
 	ClrChargeLimit();
 #endif // CHARGE_LIMIT
@@ -1481,21 +1510,31 @@ if (TempChkEnabled()) {
 #endif
     }
     else if (m_EvseState == EVSE_STATE_B) { // connected 
-      chargingOff(); // turn off charging current
+      //chargingOff(); // turn off charging current
 #ifdef AUTH_LOCK
       // if locked, don't turn on PWM
-      if (AuthLockIsOn()) {
+      if (AuthLockIsOn() || m_CurrentCapacity == 0) {   // Current capacity check added by sok
 	m_Pilot.SetState(PILOT_STATE_P12);
       }
       else {
 	m_Pilot.SetPWM(m_CurrentCapacity);
       }
 #else
-      m_Pilot.SetPWM(m_CurrentCapacity);
+      if(m_CurrentCapacity == 0){
+        m_Pilot.SetState(PILOT_STATE_P12);
+      }
+      else {
+        m_Pilot.SetPWM(m_CurrentCapacity);
+      }
 #endif // AUTH_LOCK
     }
     else if (m_EvseState == EVSE_STATE_C) {
-      m_Pilot.SetPWM(m_CurrentCapacity);
+      if(m_CurrentCapacity == 0){           // Current capacity check added by sok
+        m_Pilot.SetState(PILOT_STATE_P12);
+      }
+      else{
+        m_Pilot.SetPWM(m_CurrentCapacity);
+      }
 #ifdef UL_GFI_SELFTEST
       // test GFI before closing relay
       if (GfiSelfTestEnabled() && m_Gfi.SelfTest()) {
@@ -1519,7 +1558,7 @@ if (TempChkEnabled()) {
       delay(150);
 #endif // FT_GFI_LOCKOUT
 
-      chargingOn(); // turn on charging current
+      
     }
     else if (m_EvseState == EVSE_STATE_D) {
       // vent required not supported
@@ -1574,7 +1613,9 @@ if (TempChkEnabled()) {
       chargingOff(); // turn off charging current
     }
 #if defined(RAPI) && !defined(AUTH_LOCK)
-    RapiSendEvseState();
+    if(m_EvseState != prevevsestate){
+      RapiSendEvseState();
+    }
 #endif // RAPI && !AUTH_LOCK
 #ifdef SERDBG
     if (SerDbgEnabled()) {
@@ -1826,8 +1867,10 @@ int J1772EVSEController::SetCurrentCapacity(uint8_t amps,uint8_t updatelcd,uint8
     }
   }
 #endif // PP_AUTO_AMPACITY
-
-  if ((amps >= MIN_CURRENT_CAPACITY_J1772) && (amps <= maxcurrentcap)) {
+  if (amps == 0){
+    m_CurrentCapacity = amps;
+  }
+  else if ((amps >= MIN_CURRENT_CAPACITY_J1772) && (amps <= maxcurrentcap)) {
     m_CurrentCapacity = amps;
   }
   else if (amps < MIN_CURRENT_CAPACITY_J1772) {
@@ -1843,8 +1886,29 @@ int J1772EVSEController::SetCurrentCapacity(uint8_t amps,uint8_t updatelcd,uint8
     eeprom_write_byte((uint8_t*)((GetCurSvcLevel() == 1) ? EOFS_CURRENT_CAPACITY_L1 : EOFS_CURRENT_CAPACITY_L2),(byte)m_CurrentCapacity);
   }
 
-  if (m_Pilot.GetState() == PILOT_STATE_PWM) {
-    m_Pilot.SetPWM(m_CurrentCapacity);
+  // Charging ongoing
+  /*if(m_EvseState == EVSE_STATE_C){
+    if(m_CurrentCapacity > 0){
+      // Charging should remain on
+      if(m_Pilot.GetState() == PILOT_STATE_PWM){
+        // Normal change in PWM
+        m_Pilot.SetPWM(m_CurrentCapacity);
+      } else{
+        m_Pilot.SetState(PILOT_STATE_PWM);
+      }
+    }
+  }*/
+
+  if (m_CurrentCapacity > 0){
+    if (m_Pilot.GetState() == PILOT_STATE_PWM) {
+      m_Pilot.SetPWM(m_CurrentCapacity);
+    } else if(m_Pilot.GetState() != PILOT_STATE_N12){
+      m_Pilot.SetState(PILOT_STATE_PWM);
+      m_Pilot.SetPWM(m_CurrentCapacity);
+    }
+  } else if(m_Pilot.GetState() != PILOT_STATE_N12) {
+    m_PWMOffTimeMS = millis();
+    m_Pilot.SetState(PILOT_STATE_P12);
   }
 
   if (updatelcd) {

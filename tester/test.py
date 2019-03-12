@@ -7,6 +7,9 @@ baud = 115200
 
 class OpenEVSETester(unittest.TestCase):
 
+    def bootEV(self):
+        self.serial_tester.write(b'SB\r\n')
+
     def setEVState(self, state):
         self.serial_tester.write(bytes('SS {}\r\n'.format(state), 'ascii'))
     
@@ -17,20 +20,21 @@ class OpenEVSETester(unittest.TestCase):
         self.serial_tester.write(bytes('TR {}\r\n'.format(state), 'ascii'))
 
     def setEVSECurrent(self, current):
+        #print(bytes('$SC {}\r\n'.format(current), 'ascii'))
         self.serial_open_evse.write(bytes('$SC {}\r\n'.format(current), 'ascii'))
         #print(self.serial_open_evse.readline())
     
     def initEVSE(self, current):
-        self.serial_open_evse.write(b'$FF D 0') # disable diode chec
+        self.serial_open_evse.write(b'$FF D 0\r\n') # disable diode chec
         #print(self.serial_open_evse.readline())
         time.sleep(0.5)
-        self.serial_open_evse.write(b'$FF G 0') # disable ground check
+        self.serial_open_evse.write(b'$FF G 0\r\n') # disable ground check
         #print(self.serial_open_evse.readline())
         time.sleep(0.5)
-        self.serial_open_evse.write(b'$SL 2')   # Set service level 2
+        self.serial_open_evse.write(b'$SL 2\r\n')   # Set service level 2
         #print(self.serial_open_evse.readline())
         time.sleep(0.5)
-        self.setEVSECurrent(6)
+        self.setEVSECurrent(current)
         time.sleep(0.5)
 
     def assert_freq(self, meas):
@@ -50,12 +54,15 @@ class OpenEVSETester(unittest.TestCase):
         self.serial_open_evse = serial.Serial(OPEN_EVSE_PORT, baud)
         self.serial_tester = serial.Serial(TESTER_PORT, baud)
 
+        self.bootEV()
+
         time.sleep(1)
 
         # set state to A (not charging)
         self.setEVState('A')
         time.sleep(0.1)
         self.setTesterStateSend('0')
+        time.sleep(2)
     
     def tearDown(self):
         self.setTesterStateSend('0')
@@ -134,7 +141,7 @@ class PWMOnTests(OpenEVSETester):
     def test_63_A(self):
         self.assert_pwm_amps(63)
 
-    # Test instant start charging
+    # Test instant start charging Sequence 4
     def test_relay_timing_start_charging(self):
         print()
         print()
@@ -191,6 +198,144 @@ class PWMOnTests(OpenEVSETester):
         
         self.setTesterStateSend('0')
         self.serial_tester.reset_input_buffer()
+        time.sleep(2)
+
+        self.startRelayReleaseTest(new_state)
+        #print(self.serial_tester.readline())
+        incoming = json.loads(self.serial_tester.readline())
+        self.assertLess(incoming['delay'], max_time)
+
+        print('Relay release test finished with delay of: {} ms'.format(incoming['delay']))
+    
+    def test_relay_release_to_a(self):
+        self.assert_relay_release_change('A')
+    
+    def test_relay_release_to_b(self):
+        self.assert_relay_release_change('B', 3000)     # 3 sec according to SAE J1772 - 2016, 100 ms according to IEC 61851
+
+
+class PWMOffTests(OpenEVSETester):
+
+    def setUp(self):
+        super().setUp()
+        self.initEVSE(0)
+        self.serial_tester.reset_input_buffer()
+    
+
+    def test_basic(self):
+        time.sleep(0.5)
+        self.setTesterStateSend('1')   
+        for i in range(10):
+            #incoming = self.serial_tester.readline()
+            incoming = json.loads(self.serial_tester.readline())
+            self.assertEqual(incoming['relay'], 0, "Relay closed even when should be open")
+            self.assertEqual(incoming['freq'], 0, "PWM generates frequency even if should not")
+            self.assertEqual(incoming['state'], 0) 
+
+    # Test according to sequence 3.2
+    def test_start_charging(self):
+        print()
+        print()
+        print('Testing start charging with pwm 0 enabled')
+        self.setEVState('C')
+        self.setTesterStateSend('1')
+        for i in range(10):
+            incoming = json.loads(self.serial_tester.readline())
+            self.assertEqual(incoming['relay'], 0, "Relay closed even when should be open")
+            self.assertEqual(incoming['freq'], 0, "PWM generates frequency even if should not")
+            self.assertEqual(incoming['state'], 2)
+        
+        self.setEVSECurrent(16)
+
+        pwms = []
+        relay_changed = False
+        first_ts = None
+        freq_start_ts = None
+        last_ts = None
+        relay_true_counter = 0
+        while True:
+            incoming = json.loads(self.serial_tester.readline())
+            print(incoming)
+            if first_ts == None:
+                first_ts = incoming['time']
+            if incoming['freq'] > 800:
+                if freq_start_ts == None:
+                    freq_start_ts = incoming['time']
+                self.assert_freq(incoming)
+                pwms.append(incoming['PWM'])
+            if incoming['relay'] == 1 and not relay_changed:
+                last_ts = incoming['time']
+                relay_changed = True
+            if relay_changed:
+                self.assertEqual(incoming['relay'], 1)
+                relay_true_counter += 1
+            if relay_true_counter == 20:
+                break
+        
+        self.assert_PWM(sum(pwms)/len(pwms), 16)
+        self.assertTrue(last_ts - first_ts < 2900, 'Relay took too long to close: {} ms'.format(last_ts - first_ts))
+        print('Relay close test finished, relay delay: {} ms, PWM start delay: {} ms, PWM duty cycle: {} %'.format(last_ts - first_ts, freq_start_ts - first_ts, round(sum(pwms)/len(pwms)/100.0, 1)))
+    
+
+    # Test end charging, EV not responding sequence 9.2
+    def test_stop_charging_ev_not_responding(self):
+        print()
+        print()
+        print('Testing end charging by stopping PWM, car not responding')
+        self.setEVState('C')
+        self.setTesterStateSend('1')
+        self.setEVSECurrent(16)
+
+        incoming = json.loads(self.serial_tester.readline())
+        while incoming['relay'] == 0:
+            print(incoming)
+            incoming = json.loads(self.serial_tester.readline())
+        
+        print('Relay closed, let charge for a few sec')
+        self.setTesterStateSend('0')
+        time.sleep(2)
+        self.setTesterStateSend('1')
+
+        self.setEVSECurrent(0)
+
+        first_ts = None
+        freq_start_ts = None
+        last_ts = None
+
+        while True:
+            incoming = json.loads(self.serial_tester.readline())
+            if first_ts == None:
+                first_ts = incoming['time']
+            if incoming['relay'] == 0:
+                last_ts = incoming['time']
+                break
+
+        self.assertGreater(last_ts - first_ts, 6000)
+        print('Relay open test finished, relay delay: {} ms'.format(last_ts - first_ts))
+    
+
+     # Test relay off timing
+    def assert_relay_release_change(self, new_state, max_time=100):
+        print()
+        print()
+        print('Starting relay release test, changing state to: {}'.format(new_state))
+        time.sleep(0.5)
+        self.setEVState('C')
+        self.setTesterStateSend('1')
+        self.setEVSECurrent(16)
+        
+        ts = time.time()
+        incoming = json.loads(self.serial_tester.readline())
+        while incoming['relay'] != 1:
+            incoming = json.loads(self.serial_tester.readline())
+
+        relay_delay = time.time() - ts
+
+        print('Relay closed, with delay of {} s'.format(round(relay_delay, 2)))
+        
+        self.setTesterStateSend('0')
+        self.serial_tester.reset_input_buffer()
+        time.sleep(2)
 
         self.startRelayReleaseTest(new_state)
         #print(self.serial_tester.readline())

@@ -1389,6 +1389,8 @@ extern TempMonitor g_TempMonitor;
 
 void wdt_delay(uint32_t ms);
 
+// returns a - b
+unsigned long overflow_diff(unsigned long a, unsigned long b);
 
 #include "strings.h"
 #include "rapi_proc.h"

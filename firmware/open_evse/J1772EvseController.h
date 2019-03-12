@@ -18,6 +18,7 @@
  * Boston, MA 02111-1307, USA.
  */
 
+#define RELAY_FORCE_OFF_DELAY 6500
 
 // EVSE states for m_EvseState
 #define EVSE_STATE_UNKNOWN 0x00
@@ -166,6 +167,7 @@ class J1772EVSEController {
   uint8_t m_CurrentCapacity; // max amps we can output
   unsigned long m_ChargeOnTimeMS; // millis() when relay last closed
   unsigned long m_ChargeOffTimeMS; // millis() when relay last opened
+  unsigned long m_PWMOffTimeMS;   // millis() when PWM turned off
   time_t m_ChargeOnTime; // unixtime when relay last closed
   time_t m_ChargeOffTime;   // unixtime when relay last opened
   time_t m_ElapsedChargeTime;

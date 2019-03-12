@@ -1,3 +1,5 @@
+#include <avr/wdt.h>
+
 #define pinB 13
 #define pinC 10
 #define pinD 7
@@ -95,6 +97,7 @@ void setup() {
   pciSetup(pinPilot);
 
   sei();    // Enable interrupts
+  wdt_enable(WDTO_500MS);
 }
 
 void process_state(uint8_t state){
@@ -177,7 +180,9 @@ void test_relay_open(uint8_t testState){
   state = testState;
   process_state(state);
   unsigned long timeStart = millis();
-  while(digitalRead(pinRelay1) == HIGH){}
+  while(digitalRead(pinRelay1) == HIGH){
+    wdt_reset();
+  }
   unsigned long delay = millis() - timeStart;
   Serial.print("{\"type\": \"relay_release_test\", \"delay\": ");
   Serial.print(delay);
@@ -221,6 +226,10 @@ void process_incoming_data(){
                 sendState = 0;
                 break;
             }
+            break;
+          case 'R':   // Set Reboot
+            while(1){}
+            break;
         }
         break;
       case 'G':
@@ -249,7 +258,8 @@ void process_incoming_data(){
   }
 }
 
-void loop() { 
+void loop() {
+  wdt_reset();
   buttonState = digitalRead(pinButton);
   if(buttonState == HIGH && buttonState != lastButtonState && (millis() - buttonPressTime) > 300){
     buttonPressTime = millis();

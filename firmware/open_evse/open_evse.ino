@@ -59,6 +59,13 @@
   #endif 
 #endif // TEMPERATURE_MONITORING
 
+unsigned long overflow_diff(unsigned long a, unsigned long b){
+  if(b > a){
+    return (0xffffffff - b) + a;
+  } else {
+    return a - b;
+  }
+}
 
 #ifdef BTN_MENU
 SettingsMenu g_SettingsMenu;
