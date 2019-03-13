@@ -28,6 +28,7 @@ volatile unsigned long fallingEdges[samplesAverage];
 volatile uint8_t i = 0;
 volatile uint8_t inited = 0;
 volatile uint8_t rised = 0;
+volatile uint8_t oldPWMState = 0;
 
 volatile unsigned long freq = 0;
 volatile unsigned long timeUp = 0;
@@ -52,28 +53,31 @@ ISR (PCINT1_vect) {
   unsigned long eventTime = micros();
   lastChange = millis();                      // Not interrupt safe, non critical though
   uint8_t pinState = digitalRead(pinPilot);   // Could be done faster if required
-  if(pinState == HIGH){
-    // Rising edge
-    freq = 1000000 * samplesAverage / (eventTime - risingEdges[i]);
-    totalTime = eventTime - risingEdges[i];//(i + 1) % samplesAverage];
-    //timeDown = eventTime - fallingEdges[(i - 1) % samplesAverage];
-    if(!rised){
-      rised = 1;
-    }
-    risingEdges[i] = eventTime;
-  } else {
-    if(rised){
-      // Update time up and down here
-      timeUp += (eventTime - risingEdges[i]);
-      if(inited){
-        timeUp -= (fallingEdges[(i + 1) % samplesAverage] - risingEdges[(i + 1) % samplesAverage]);
-      } else if(i == (samplesAverage - 1)){
-        inited = 1;
+  if(pinState != oldPWMState){
+    if(pinState == HIGH){
+      // Rising edge
+      freq = 1000000 * samplesAverage / (eventTime - risingEdges[i]);
+      totalTime = eventTime - risingEdges[i];//(i + 1) % samplesAverage];
+      //timeDown = eventTime - fallingEdges[(i - 1) % samplesAverage];
+      if(!rised){
+        rised = 1;
       }
-      
-      fallingEdges[i] = eventTime;
-      i = (i + 1) % samplesAverage;
-    }    
+      risingEdges[i] = eventTime;
+    } else {
+      if(rised){
+        // Update time up and down here
+        timeUp += (eventTime - risingEdges[i]);
+        if(inited){
+          timeUp -= (fallingEdges[(i + 1) % samplesAverage] - risingEdges[(i + 1) % samplesAverage]);
+        } else if(i == (samplesAverage - 1)){
+          inited = 1;
+        }
+        
+        fallingEdges[i] = eventTime;
+        i = (i + 1) % samplesAverage;
+      }    
+    }
+  oldPWMState = pinState;
   }
 }
 
