@@ -1465,12 +1465,8 @@ if (TempChkEnabled()) {
     }
   }
   else if (m_EvseState == EVSE_STATE_C) {
-    /*if(m_CurrentCapacity == 0){           // Current capacity check added by sok
-      m_Pilot.SetState(PILOT_STATE_P12);
-    }
-    else{
-      m_Pilot.SetPWM(m_CurrentCapacity);
-    }*/
+    // Give the car 6 seconds to respond to disappearing PWM according to
+    // Sequence 10.2 in IEC 61851-1
     if(m_CurrentCapacity == 0){
       if(chargingIsOn() && overflow_diff(millis(), m_PWMOffTimeMS) > RELAY_FORCE_OFF_DELAY){
         chargingOff();
@@ -1886,24 +1882,12 @@ int J1772EVSEController::SetCurrentCapacity(uint8_t amps,uint8_t updatelcd,uint8
     eeprom_write_byte((uint8_t*)((GetCurSvcLevel() == 1) ? EOFS_CURRENT_CAPACITY_L1 : EOFS_CURRENT_CAPACITY_L2),(byte)m_CurrentCapacity);
   }
 
-  // Charging ongoing
-  /*if(m_EvseState == EVSE_STATE_C){
-    if(m_CurrentCapacity > 0){
-      // Charging should remain on
-      if(m_Pilot.GetState() == PILOT_STATE_PWM){
-        // Normal change in PWM
-        m_Pilot.SetPWM(m_CurrentCapacity);
-      } else{
-        m_Pilot.SetState(PILOT_STATE_PWM);
-      }
-    }
-  }*/
-
+  // TODO: Is there any other conditions than PILOT_STATE_N12 that prevents charging?
   if (m_CurrentCapacity > 0){
     if (m_Pilot.GetState() == PILOT_STATE_PWM) {
       m_Pilot.SetPWM(m_CurrentCapacity);
     } else if(m_Pilot.GetState() != PILOT_STATE_N12){
-      m_Pilot.SetState(PILOT_STATE_PWM);
+      //m_Pilot.SetState(PILOT_STATE_PWM);
       m_Pilot.SetPWM(m_CurrentCapacity);
     }
   } else if(m_Pilot.GetState() != PILOT_STATE_N12) {
