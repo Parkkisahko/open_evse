@@ -1,0 +1,24 @@
+{
+    "Header": {
+        "Comment": "All values are metric (mm)",
+        "CreationDate": "2019-03-22T12:23:11Z",
+        "GenerationSoftware": {
+            "Application": "EAGLE",
+            "Vendor": "Autodesk",
+            "Version": "9.3.0"
+        },
+        "Part": "Single"
+    },
+    "Overall": {
+        "BoardThickness": 1.57,
+        "LayerNumber": 2,
+        "Name": {
+            "ProjectId": "tester"
+        },
+        "Owner": "Santeri Oksanen <santeri.oksanen@gmail.com>",
+        "Size": {
+            "X": 89.84,
+            "Y": 97.78
+        }
+    }
+}
