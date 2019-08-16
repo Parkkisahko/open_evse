@@ -4,7 +4,8 @@ OpenEVSE's come from factory without support for zero current while EVSE is acti
 ## Prerequisites
 - Avrdude installed
 - A programmer f.ex. AVRISP mkII (https://www.microchip.com/DevelopmentTools/ProductDetails/PartNO/ATAVRISP2)
-- Programmer connected to OpenEVSE
+- Programmer connected to OpenEVSE's ISP1 pins (Should show green when connected righ), connection diagram found in this directory ```OpenEVSE_v5.pdf```
+- OpenEVSE needs to be powered up, a propotion for future is to design a board that simply feeds 5 V to OpenEVSE via progrmamming pins while programming
 
 ## Using different programmer
 - Edit ```flash.sh```, replace avrispmkII with the correct programming device
