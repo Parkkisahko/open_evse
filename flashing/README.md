@@ -13,6 +13,11 @@ OpenEVSE's come from factory without support for zero current while EVSE is acti
 ## Flashing
 - Run ./flash.sh
 - Verify that avrdude says everything is ok.
+- Avrdude probably complains about changed fuses: ```
+avrdude: verifying ...
+avrdude: verification error, first mismatch at byte 0x0000
+         0xfd != 0x05
+avrdude: verification error; content mismatch```. This is not an issue, so don't change back.
 
 ## Flashing OTA
 - Avrdude needs to be installed on device
