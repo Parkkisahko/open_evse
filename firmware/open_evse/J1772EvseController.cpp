@@ -570,7 +570,7 @@ uint8_t J1772EVSEController::GetMaxCurrentCapacity()
   uint8_t svclvl = GetCurSvcLevel();
   uint8_t ampacity =  eeprom_read_byte((uint8_t*)((svclvl == 1) ? EOFS_CURRENT_CAPACITY_L1 : EOFS_CURRENT_CAPACITY_L2));
 
-  if ((ampacity == 0xff) || (ampacity == 0)) {
+  if (ampacity == 0xff) { // || (ampacity == 0)) {
     ampacity = (svclvl == 1) ? DEFAULT_CURRENT_CAPACITY_L1 : DEFAULT_CURRENT_CAPACITY_L2;
   }
   
@@ -1850,10 +1850,10 @@ int J1772EVSEController::SetCurrentCapacity(uint8_t amps,uint8_t updatelcd,uint8
   int rc = 0;
   uint8_t maxcurrentcap = (GetCurSvcLevel() == 1) ? MAX_CURRENT_CAPACITY_L1 : MAX_CURRENT_CAPACITY_L2;
 
-  if (nosave) {
+  /*if (nosave) {
     // temporary amps can't be > max set in EEPROM
     maxcurrentcap = GetMaxCurrentCapacity();
-  }
+  }*/
 
 #ifdef PP_AUTO_AMPACITY
   if ((GetState() >= EVSE_STATE_B) && (GetState() <= EVSE_STATE_C)) {
