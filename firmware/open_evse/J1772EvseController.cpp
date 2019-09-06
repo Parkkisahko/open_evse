@@ -575,7 +575,7 @@ uint8_t J1772EVSEController::GetMaxCurrentCapacity()
   }
   
   if (ampacity < MIN_CURRENT_CAPACITY_J1772) {
-    ampacity = MIN_CURRENT_CAPACITY_J1772;
+    ampacity = 0; //MIN_CURRENT_CAPACITY_J1772;
   }
   else {
     if (svclvl == 1) { // L1
